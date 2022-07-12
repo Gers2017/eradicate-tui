@@ -2,7 +2,7 @@ use glob::{glob_with, MatchOptions};
 use std::{error::Error, fs, path::PathBuf};
 use tui::widgets::ListState;
 
-pub enum InputMode {
+pub enum AppMode {
     Normal,
     Insert,
 }
@@ -12,7 +12,7 @@ pub type ErrorBox = Box<dyn Error>;
 pub struct App {
     pub list: StatefulList<PathEntry>,
     pub curret_input: String,
-    pub input_mode: InputMode,
+    pub app_mode: AppMode,
     pub pattern: String,
     glob_options: MatchOptions,
 }
@@ -22,10 +22,14 @@ impl App {
         App {
             list: StatefulList::new(),
             curret_input: String::new(),
-            input_mode: InputMode::Normal,
+            app_mode: AppMode::Normal,
             pattern: String::new(),
             glob_options: MatchOptions::new(),
         }
+    }
+
+    pub fn set_app_mode(&mut self, app_mode: AppMode) {
+        self.app_mode = app_mode;
     }
 
     pub fn on_tick(&self) {
@@ -137,10 +141,12 @@ impl<T> StatefulList<T> {
     }
 
     pub fn with_items(items: Vec<T>) -> StatefulList<T> {
-        StatefulList {
+        let mut stateful_list = StatefulList {
             state: ListState::default(),
             items,
-        }
+        };
+        stateful_list.state.select(Some(0));
+        stateful_list
     }
 
     pub fn get_index(&self) -> Option<usize> {

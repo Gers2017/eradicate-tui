@@ -1,4 +1,4 @@
-use eradicate_tui::{App, ErrorBox, InputMode};
+use eradicate_tui::{App, ErrorBox, AppMode};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -62,33 +62,33 @@ fn run_app<B: Backend>(
             .unwrap_or_else(|| Duration::from_secs(0));
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
-                match app.input_mode {
-                    InputMode::Normal => match key.code {
+                match app.app_mode {
+                    AppMode::Normal => match key.code {
                         KeyCode::Enter => app.toggle_delete(),
-                        KeyCode::Down => app.list.next(),
-                        KeyCode::Up => app.list.previous(),
-                        KeyCode::Char('i') => app.toggle_case_sensitive(),
+                        KeyCode::Down | KeyCode::Char('j') => app.list.next(),
+                        KeyCode::Up | KeyCode::Char('k') => app.list.previous(),
+                        KeyCode::Char('g') => app.toggle_case_sensitive(),
                         KeyCode::Char('q') => break,
-                        KeyCode::Char('e') => {
-                            app.input_mode = InputMode::Insert;
+                        KeyCode::Char('i') => {
+                            app.set_app_mode(AppMode::Insert);
                         }
                         KeyCode::Char('d') => app.delete_active_entries()?,
                         _ => {}
                     },
-                    InputMode::Insert => match key.code {
+                    AppMode::Insert => match key.code {
                         KeyCode::Char(c) => {
                             app.curret_input.push(c);
                         }
                         KeyCode::Enter => {
-                            // set the pattern
                             let input = app.curret_input.clone();
-                            app.set_pattern(&input)?
+                            app.set_pattern(&input)?;
+                            app.set_app_mode(AppMode::Normal);
                         }
                         KeyCode::Backspace => {
                             app.curret_input.pop();
                         }
                         KeyCode::Esc => {
-                            app.input_mode = InputMode::Normal;
+                            app.set_app_mode(AppMode::Normal);
                         }
                         _ => {}
                     },
@@ -124,14 +124,14 @@ fn draw_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     let spans = Spans::from(vec![
         Span::styled("[Enter]", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" to toggle entry deletion, "),
+        Span::raw(" toggle entry deletion, "),
         Span::styled("[d]", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" to delete active entries"),
+        Span::raw("elete active entries"),
     ]);
 
-    let help_style = match app.input_mode {
-        InputMode::Normal => Style::default().add_modifier(Modifier::RAPID_BLINK),
-        InputMode::Insert => Style::default().fg(Color::Gray),
+    let help_style = match app.app_mode {
+        AppMode::Normal => Style::default(),
+        AppMode::Insert => Style::default().fg(Color::Gray),
     };
 
     let mut text = Text::from(spans);
@@ -213,24 +213,24 @@ fn draw_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     // build help message
 
-    let (msg, style) = match app.input_mode {
-        InputMode::Normal => (
+    let (msg, style) = match app.app_mode {
+        AppMode::Normal => (
             vec![
-                Span::styled("[e]", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to start editing "),
                 Span::styled("[i]", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to toogle case sensitive matches "),
+                Span::raw("nsert mode "),
+                Span::styled("[g]", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" toogle case sensitive matches "),
                 Span::styled("[q]", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to quit"),
+                Span::raw("uit"),
             ],
-            Style::default().add_modifier(Modifier::RAPID_BLINK),
+            Style::default(),
         ),
-        InputMode::Insert => (
+        AppMode::Insert => (
             vec![
                 Span::styled("[Enter]", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to set the pattern, "),
+                Span::raw(" set the pattern, "),
                 Span::styled("[Esc]", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to stop editing"),
+                Span::raw(" exit insert mode"),
             ],
             Style::default(),
         ),
@@ -269,17 +269,17 @@ fn draw_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     // display input
 
     let input = Paragraph::new(app.curret_input.as_ref())
-        .style(match app.input_mode {
-            InputMode::Normal => Style::default(),
-            InputMode::Insert => Style::default().fg(Color::Yellow),
+        .style(match app.app_mode {
+            AppMode::Normal => Style::default(),
+            AppMode::Insert => Style::default().fg(Color::Yellow),
         })
-        .block(Block::default().borders(Borders::ALL).title("Input"));
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title("Pattern"));
 
     f.render_widget(input, right_chunks[2]);
 
-    match app.input_mode {
-        InputMode::Normal => {}
-        InputMode::Insert => f.set_cursor(
+    match app.app_mode {
+        AppMode::Normal => {}
+        AppMode::Insert => f.set_cursor(
             right_chunks[2].x + app.curret_input.width() as u16 + 1,
             right_chunks[2].y + 1,
         ),
