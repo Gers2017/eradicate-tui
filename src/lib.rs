@@ -1,6 +1,9 @@
 use glob::{glob_with, MatchOptions};
 use std::{error::Error, fs, path::PathBuf};
-use tui::widgets::ListState;
+use tui::{
+    style::{Color, Style},
+    widgets::ListState,
+};
 
 pub enum AppMode {
     Normal,
@@ -9,11 +12,35 @@ pub enum AppMode {
 
 pub type ErrorBox = Box<dyn Error>;
 
+pub struct Input {
+    pub name: String,
+    pub content: String,
+    pub active_style: Style,
+    pub normal_style: Style,
+}
+
+impl Input {
+    pub fn new(name: &str, active_style: Style, normal_style: Style) -> Self {
+        Input {
+            name: name.to_string(),
+            content: String::new(),
+            active_style,
+            normal_style,
+        }
+    }
+    pub fn push_ch(&mut self, ch: char) {
+        self.content.push(ch);
+    }
+
+    pub fn pop_ch(&mut self) {
+        self.content.pop();
+    }
+}
+
 pub struct App {
     pub list: StatefulList<PathEntry>,
-    pub curret_input: String,
     pub app_mode: AppMode,
-    pub pattern: String,
+    pub pattern: Input,
     glob_options: MatchOptions,
 }
 
@@ -21,9 +48,12 @@ impl App {
     pub fn new() -> Self {
         App {
             list: StatefulList::new(),
-            curret_input: String::new(),
             app_mode: AppMode::Normal,
-            pattern: String::new(),
+            pattern: Input::new(
+                "Pattern",
+                Style::default().fg(Color::Yellow),
+                Style::default(),
+            ),
             glob_options: MatchOptions::new(),
         }
     }
@@ -32,12 +62,15 @@ impl App {
         self.app_mode = app_mode;
     }
 
-    pub fn on_tick(&self) {
-        // todo!("update me!")
+    pub fn push_ch(&mut self, ch: char) {
+        self.pattern.push_ch(ch)
     }
 
-    pub fn set_pattern(&mut self, pattern: &str) -> Result<(), ErrorBox> {
-        self.pattern = pattern.to_string();
+    pub fn pop_ch(&mut self) {
+        self.pattern.pop_ch()
+    }
+
+    pub fn set_pattern(&mut self) -> Result<(), ErrorBox> {
         let entries = self.search_with_pattern()?;
         self.update_list(entries);
         Ok(())
@@ -52,10 +85,11 @@ impl App {
     }
 
     fn search_with_pattern(&self) -> Result<Vec<PathEntry>, ErrorBox> {
-        let entries: Vec<PathEntry> = glob_with(&self.pattern.as_ref(), self.glob_options)?
-            .filter_map(Result::ok)
-            .map(PathEntry::new)
-            .collect();
+        let entries: Vec<PathEntry> =
+            glob_with(&self.pattern.content, self.glob_options)?
+                .filter_map(Result::ok)
+                .map(PathEntry::new)
+                .collect();
         Ok(entries)
     }
 
@@ -90,9 +124,9 @@ impl App {
         let entries_to_delete = self.get_entries_by(|e| e.is_delete());
         for entry in entries_to_delete.iter() {
             if entry.is_file {
-                fs::remove_file(entry.pathbuf.to_owned())?
+                fs::remove_file(&entry.pathbuf)?
             } else {
-                fs::remove_dir_all(entry.pathbuf.to_owned())?
+                fs::remove_dir_all(&entry.pathbuf)?
             }
         }
 
